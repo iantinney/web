@@ -1,0 +1,260 @@
+@import "tailwindcss";
+
+:root {
+  /* Colors - Dark theme by default (study app = evening use) */
+  --bg-primary: #0b0b10;
+  --bg-secondary: #131317;
+  --bg-tertiary: #1b1b22;
+  --bg-card: #17171e66;
+  --bg-card-hover: #1f1f2844;
+
+  --text-primary: #eaeaef;
+  --text-secondary: #9898ad;
+  --text-muted: #5c5c70;
+
+  --accent: #14b8a6;
+  --accent-hover: #2dd4bf;
+  --accent-soft: #14b8a620;
+  --accent-glow: #14b8a640;
+
+  --border: #2a2a36;
+  --border-light: #22222e66;
+
+  /* Proficiency colors */
+  --node-mastered: #00d2a0;
+  --node-developing: #ffc53d;
+  --node-gap: #ff6b6b;
+  --node-untested: #4a4a64;
+
+  /* Success / Error */
+  --success: #00d2a0;
+  --error: #ff6b6b;
+  --warning: #ffc53d;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f6f6f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #ececf0;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f1f6;
+
+  --text-primary: #1a1a2a;
+  --text-secondary: #5c5c70;
+  --text-muted: #9898ad;
+
+  --accent: #0d9488;
+  --accent-hover: #0f766e;
+  --accent-soft: #14b8a615;
+  --accent-glow: #14b8a630;
+
+  --border: #d8d8e2;
+  --border-light: #e8e8ee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "DM Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Selection */
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+/* Focus outline */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* React Flow overrides */
+.react-flow__background {
+  background-color: var(--bg-primary) !important;
+}
+
+.react-flow__minimap {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px;
+}
+
+/* Message entrance — fade + slide up */
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Feedback badge pop-in */
+@keyframes feedback-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Animated ellipsis for loading states */
+@keyframes dot-pulse {
+  0%, 20% { content: "."; }
+  40% { content: ".."; }
+  60%, 100% { content: "..."; }
+}
+
+/* Tab bar edge pulse */
+@keyframes tab-pulse {
+  0% { offset-distance: 0%; opacity: 1; }
+  50% { opacity: 1; }
+  90% { opacity: 0.3; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+/* Indeterminate progress bar animation */
+@keyframes indeterminate-progress {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(150%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ============================================================
+   Graph Visualization — Animations & Atmosphere
+   ============================================================ */
+
+/* Node entrance: fade + scale + float up + deblur */
+@keyframes node-entrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.65) translateY(16px);
+    filter: blur(5px);
+  }
+  60% {
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Mastered node aura — breathing glow */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+/* Untested node — beckoning shimmer sweep */
+@keyframes node-shimmer {
+  0% { left: -100%; }
+  100% { left: 200%; }
+}
+
+/* ---- Edge Styles ---- */
+
+/* Particle flow — stroke-dash animation for pulse dots along edges */
+@keyframes particle-flow {
+  to { stroke-dashoffset: -26; }
+}
+
+/* Single dot pulse for locked edges — full pattern cycle (3 + 2000 = 2003) */
+@keyframes particle-flow-locked {
+  to { stroke-dashoffset: -2003; }
+}
+
+
+/* ---- Graph Canvas Atmosphere ---- */
+
+.graph-canvas-wrapper {
+  position: relative;
+}
+
+/* Vignette — darkens edges of viewport for depth focus */
+.graph-canvas-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(6, 6, 12, 0.25) 100%
+  );
+  pointer-events: none;
+  z-index: 4;
+}
+
+[data-theme="light"] .graph-canvas-wrapper::after {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(220, 220, 235, 0.25) 100%
+  );
+}
+
+/* ---- Panel & Detail Animations ---- */
+
+/* NodeDetailPanel slide in from right */
+@keyframes panel-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Proficiency bar fill animation */
+@keyframes bar-fill-in {
+  0% {
+    width: 0% !important;
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}

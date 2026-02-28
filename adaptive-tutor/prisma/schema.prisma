@@ -1,0 +1,276 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String   @id @default("demo-user")
+  displayName     String   @default("Learner")
+  createdAt       DateTime @default(now())
+  learnerProfile  String   @default("{}") // JSON: { background: [], goals: [], interests: [] }
+
+  studyPlans  StudyPlan[]
+  concepts    Concept[]
+  attempts    AttemptRecord[]
+  chatThreads ChatThread[]
+}
+
+model StudyPlan {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  description String   @default("")
+  sourceText  String   @default("")
+  status      String   @default("active") // active | completed | paused
+  targetDate  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id])
+  unitGraphs  UnitGraph[]
+  concepts    ConceptNode[]
+  edges       ConceptEdge[]
+  sessions    SessionRecord[]
+  chatThreads ChatThread[]
+  questions   Question[]
+}
+
+model Concept {
+  id                 String   @id @default(cuid())
+  userId             String
+  name               String
+  nameNormalized     String
+  description        String   @default("")
+  keyTermsJson       String   @default("[]")
+  proficiency        Float    @default(0.0)
+  confidence         Float    @default(0.0)
+  easeFactor         Float    @default(2.5)
+  interval           Int      @default(1)
+  repetitionCount    Int      @default(0)
+  lastPracticed      DateTime?
+  nextDue            DateTime?
+  attemptCount       Int      @default(0)
+  isDeprecated       Boolean  @default(false)
+  isManuallyAdjusted Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user               User                @relation(fields: [userId], references: [id])
+  memberships        GraphMembership[]
+  questions          Question[]
+  edgesFrom          ConceptEdge[] @relation("EdgeFrom")
+  edgesTo            ConceptEdge[] @relation("EdgeTo")
+
+  @@unique([userId, nameNormalized])
+}
+
+model UnitGraph {
+  id            String   @id @default(cuid())
+  studyPlanId   String
+  title         String
+  description   String   @default("")
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  studyPlan     StudyPlan       @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  memberships   GraphMembership[]
+  edges         ConceptEdge[]
+  sessions      SessionRecord[]
+  linksFrom     GraphLink[] @relation("LinkFrom")
+  linksTo       GraphLink[] @relation("LinkTo")
+
+  @@index([studyPlanId])
+}
+
+model GraphMembership {
+  id            String   @id @default(cuid())
+  conceptId     String
+  unitGraphId   String
+  positionX     Float    @default(0)
+  positionY     Float    @default(0)
+  depthTier     Int      @default(0)
+  addedAt       DateTime @default(now())
+  addedBy       String   @default("system")
+
+  concept       Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  unitGraph     UnitGraph @relation(fields: [unitGraphId], references: [id], onDelete: Cascade)
+
+  @@unique([conceptId, unitGraphId])
+  @@index([unitGraphId])
+}
+
+model GraphLink {
+  id              String   @id @default(cuid())
+  fromGraphId     String
+  toGraphId       String
+  linkType        String   @default("expansion")
+  sharedContext   String   @default("")
+  status          String   @default("proposed")
+  createdAt       DateTime @default(now())
+
+  fromGraph       UnitGraph @relation("LinkFrom", fields: [fromGraphId], references: [id], onDelete: Cascade)
+  toGraph         UnitGraph @relation("LinkTo", fields: [toGraphId], references: [id], onDelete: Cascade)
+
+  @@unique([fromGraphId, toGraphId])
+}
+
+model ConceptNode {
+  id                 String   @id @default(cuid())
+  studyPlanId        String
+  name               String
+  description        String   @default("")
+  keyTermsJson       String   @default("[]")
+  difficultyTier     Int      @default(1)
+  proficiency        Float    @default(0.0)
+  confidence         Float    @default(0.0)
+  easeFactor         Float    @default(2.5)
+  interval           Int      @default(1)
+  repetitionCount    Int      @default(0)
+  lastPracticed      DateTime?
+  nextDue            DateTime?
+  attemptCount       Int      @default(0)
+  isDeprecated       Boolean  @default(false)
+  isManuallyAdjusted Boolean  @default(false)
+  positionX          Float    @default(0)
+  positionY          Float    @default(0)
+
+  studyPlan          StudyPlan     @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  questions          Question[]
+}
+
+model ConceptEdge {
+  id            String @id @default(cuid())
+  fromNodeId    String
+  toNodeId      String
+  unitGraphId   String?
+  studyPlanId   String?
+  edgeType      String @default("prerequisite")
+
+  fromNode      Concept   @relation("EdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode        Concept   @relation("EdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+  unitGraph     UnitGraph? @relation(fields: [unitGraphId], references: [id], onDelete: Cascade)
+  studyPlan     StudyPlan?  @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([fromNodeId, toNodeId, unitGraphId])
+  @@index([unitGraphId])
+}
+
+model GapDetection {
+  id                String   @id @default(cuid())
+  userId            String
+  conceptId         String       // The concept user was practicing
+  missingConcept    String       // The prerequisite LLM identified as missing
+  severity          String       // NARROW | MODERATE | BROAD
+  explanation       String       // LLM's reasoning (1-sentence)
+  status            String   @default("detected")  // detected | proposed | accepted | declined
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, conceptId])
+  @@index([userId, missingConcept])
+}
+
+model Question {
+  id              String   @id @default(cuid())
+  conceptId       String?
+  conceptNodeId   String?
+  studyPlanId     String?
+  questionType    String
+  questionText    String
+  correctAnswer   String
+  distractorsJson String   @default("[]")
+  explanation     String   @default("")
+  difficulty      Float    @default(0.5)
+  sourcesJson     String   @default("[]")
+  createdAt       DateTime @default(now())
+
+  concept         Concept?       @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  conceptNode     ConceptNode?   @relation(fields: [conceptNodeId], references: [id], onDelete: Cascade)
+  studyPlan       StudyPlan?     @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  attempts        AttemptRecord[]
+
+  @@index([conceptId])
+  @@index([conceptNodeId])
+  @@index([studyPlanId])
+}
+
+model AttemptRecord {
+  id                 String   @id @default(cuid())
+  questionId         String
+  userId             String
+  userAnswer         String   @default("")
+  isCorrect          Boolean  @default(false)
+  score              Float    @default(0.0)
+  feedback           String   @default("")
+  misconceptionsJson String   @default("[]")
+  timeTaken          Int      @default(0)
+  createdAt          DateTime @default(now())
+  sessionId          String?
+
+  question           Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user               User           @relation(fields: [userId], references: [id])
+  session            SessionRecord? @relation(fields: [sessionId], references: [id])
+}
+
+model SessionRecord {
+  id                  String   @id @default(cuid())
+  unitGraphId         String?
+  studyPlanId         String?
+  sessionType         String   @default("practice")
+  startTime           DateTime @default(now())
+  endTime             DateTime?
+  questionsAttempted  Int      @default(0)
+  questionsCorrect    Int      @default(0)
+  conceptsCoveredJson String   @default("[]")
+
+  unitGraph           UnitGraph?      @relation(fields: [unitGraphId], references: [id], onDelete: Cascade)
+  studyPlan           StudyPlan?      @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  attempts            AttemptRecord[]
+
+  @@index([unitGraphId])
+  @@index([studyPlanId])
+}
+
+model ChatThread {
+  id          String   @id @default(cuid())
+  userId      String
+  studyPlanId String?
+  title       String   @default("New Chat")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id])
+  studyPlan   StudyPlan?    @relation(fields: [studyPlanId], references: [id])
+  messages    ChatMessage[]
+}
+
+model ChatMessage {
+  id              String   @id @default(cuid())
+  threadId        String
+  role            String
+  content         String
+  toolCallsJson   String   @default("[]")
+  toolResultsJson String   @default("[]")
+  createdAt       DateTime @default(now())
+
+  thread          ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+model SourceChunk {
+  id              String   @id @default(cuid())
+  conceptId       String
+  studyPlanId     String
+  source          String   // "wikipedia" | "wikibooks"
+  pageTitle       String
+  pageUrl         String
+  sectionHeading  String
+  content         String
+  createdAt       DateTime @default(now())
+
+  @@index([conceptId])
+  @@index([studyPlanId])
+}

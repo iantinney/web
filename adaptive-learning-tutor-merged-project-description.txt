@@ -1,0 +1,706 @@
+ADAPTIVE LEARNING TUTOR — COHESIVE PROJECT DESCRIPTION (PATCH-PRECEDENCE VERSION)
+
+Purpose
+Build a local-first hackathon web app that acts as an AI-powered personal tutor. The system ingests learning goals/materials, generates a concept graph, diagnoses user knowledge with adaptive questions, runs targeted practice sessions, and visualizes progress as an evolving knowledge map. The app is optimized for a single-user local demo and uses MiniMax models for generation/evaluation.
+
+Patch Precedence (Important)
+This document merges the original proposal with the patch notes. If there is any conflict, the patch wins.
+
+Key patch constraints:
+- Local-only development and demo (no deployment required)
+- No authentication (single hardcoded demo user)
+- SQLite via Prisma (no Supabase/Postgres)
+- Local filesystem uploads (/public/uploads)
+- In-process async work (no job queue for P0)
+- Only required environment variable: MINIMAX_API_KEY
+
+Non-Goals for Hackathon P0
+- Multi-user support
+- Authentication / OAuth / account management
+- Cloud deployment (Vercel or similar)
+- Production-grade push infrastructure
+- Full resource discovery agent (can be deferred to P2)
+
+Product Summary
+The app provides a closed learning loop:
+1) User defines a learning goal and/or provides source material
+2) System generates a concept graph (prerequisite DAG)
+3) System runs diagnostic and adaptive practice in the Learn tab
+4) System updates concept proficiency/confidence
+5) Graph tab visualizes progress
+6) Chat tab provides context-aware tutoring and planning
+7) (P1/P2) Scheduler queues review and local notifications
+
+This is a three-tab application:
+- Chat: tutoring, plan creation, explanations, mistake review
+- Learn: adaptive practice via card-based questions
+- Graph: concept DAG visualization with proficiency state
+
+Core User Experience
+
+1. Chat Tab (Tutor + Study Plan Creation)
+Primary entry point and conversational interface.
+Required behaviors:
+- User describes a learning goal (e.g., "Learn linear algebra for ML" or "Pass AP Chemistry")
+- Tutor asks clarifying questions (timeline, depth, prior knowledge) when needed
+- Tutor can create a study plan and trigger concept graph generation
+- Tutor answers concept questions and references the user's weak areas
+- Tutor can discuss recent mistakes from Learn tab and provide targeted feedback
+
+Implementation notes:
+- Chat prompt should include a compressed user-learning-state summary, not the full graph:
+  - Active study plan
+  - Top weak concepts with proficiency scores
+  - Recent mistakes/misconceptions
+  - Overall progress
+- Message history is stored locally in SQLite (ChatThread, ChatMessage)
+- Chat streams responses from MiniMax (if compatible)
+
+2. Learn Tab (Adaptive Practice Sessions)
+This is the active learning engine. It presents question cards and records user performance.
+
+Question types (P0 should support at least 3; target 4):
+- Flashcard (tap to reveal)
+- Fill-in-the-blank
+- Multiple choice (with misconception-targeting distractors)
+- Free response (LLM-evaluated)
+
+Session flow:
+- Diagnosis phase:
+  - Used when entering a new study plan / concept cluster
+  - Selects questions to quickly estimate proficiency across the graph
+  - Uses prerequisite skip logic to reduce redundant testing
+- Targeted practice phase:
+  - Focus on weak/high-priority concepts
+  - Interleave question types to test different understanding modes
+- Adaptive difficulty:
+  - Difficulty increases on success, decreases on failure
+  - Goal is to converge near the user's zone of proximal development
+- Session summary:
+  - Concepts covered
+  - Accuracy / score
+  - Proficiency changes
+  - Link/button to view updated graph
+
+P0 implementation simplification:
+- Pre-generate question banks after graph generation (fire-and-forget async)
+- If question generation is still running, Learn tab shows loading/progress state
+
+3. Graph Tab (Concept Visualization)
+Interactive concept DAG for the selected study plan.
+
+Graph model:
+- Nodes = concepts
+- Edges = prerequisite relationships (DAG)
+- Node state includes proficiency and confidence
+- Node color reflects proficiency:
+  - Gray = untested
+  - Red = weak / gap
+  - Yellow = developing
+  - Green = strong / mastered (threshold-based)
+- Node positions stored in DB after dagre layout (positionX, positionY)
+
+Required interactions:
+- View graph for selected study plan
+- Click node to open detail panel
+- Show concept metadata (description, proficiency, attempts, due date if applicable)
+- "Practice this concept" CTA from detail panel (targeted session)
+- Refresh graph state after Learn session updates
+
+Optional/P1:
+- Manual proficiency override
+- Add/remove/deprecate nodes
+- Timeline view of graph evolution
+
+Functional Requirements (End-to-End)
+A user should be able to:
+1) Open the app (no sign-up)
+2) Create a study plan from pasted source text (syllabus/course description) or chat-driven prompt
+3) Trigger concept graph generation
+4) View an interactive graph
+5) Start a diagnostic/adaptive learning session
+6) Submit answers and receive feedback (including LLM feedback for free response)
+7) See updated proficiency reflected in the graph
+8) Continue chatting with a tutor that knows their weak/strong areas
+
+Technical Architecture (Patch-Precedence)
+
+Frontend
+- Next.js (App Router) + TypeScript + React + Tailwind CSS
+- shadcn/ui components
+- Zustand for shared client state (selected study plan/tab/session state)
+- Framer Motion for card transitions/animations
+- React Flow (@xyflow/react) + dagre for graph visualization/layout
+
+Backend (within Next.js API routes)
+- Next.js Route Handlers under /src/app/api/*
+- Thin orchestration layer for:
+  - MiniMax calls
+  - Graph generation pipeline
+  - Question generation/evaluation
+  - CRUD for study plans/graph/questions/attempts/chat
+- No separate deployed backend required for P0
+
+LLM
+- MiniMax API for:
+  - Concept graph generation (structured JSON)
+  - Question generation (structured JSON)
+  - Free response evaluation
+  - Chat tutoring responses
+- Centralized prompt library in /src/lib/prompts
+- Validation + retry required for all structured outputs
+- A MiniMax compatibility spike is required before app coding (JSON reliability, streaming, latency)
+
+Persistence
+- Prisma ORM + SQLite (local file database: prisma/dev.db)
+- Single demo user (hardcoded)
+- Local-first only for hackathon (no cloud sync)
+- Local file uploads stored in /public/uploads
+
+Uploads / File Storage
+- POST /api/upload saves files to /public/uploads
+- Return local path for use in UI and parsing pipeline
+- PDF parsing can be added in P1 (e.g., pdf-parse) if ingesting uploaded syllabi instead of plain text
+
+Async Work / Scheduling
+- P0: fire-and-forget async functions (e.g., question pre-generation after graph generation)
+- No Inngest/Trigger.dev in P0
+- P2 reviews/notices can use setInterval in dev server + browser Notification API (local only)
+
+Infrastructure (Revised / Simplified)
+- No Vercel deployment for hackathon
+- No Supabase / Clerk / NextAuth / OAuth
+- No cloud storage
+- No cron service
+- Demo runs via `next dev` on localhost
+- Deliverable is repository + local setup instructions + demo recording/screenshots
+
+Configuration
+- /src/lib/config.ts exports constants like:
+  - USER_ID = "demo-user"
+  - Default thresholds / settings
+- .env.local contains only:
+  - MINIMAX_API_KEY=...
+
+Data Model (Prisma + SQLite)
+
+Important SQLite/Prisma constraints
+- SQLite has no native array fields -> store arrays as JSON strings (String columns with Json suffix)
+- SQLite enum validation is not DB-level -> Prisma stores enum values as strings; validate with Zod in app layer
+- DateTime values are stored as strings in SQLite (Prisma handles conversion)
+- SQLite is single-writer -> acceptable for single-user local hackathon demo
+
+Recommended P0/P1 schema entities (patch-precedence naming)
+1. User
+- id (String, hardcoded "demo-user")
+- displayName (String, default "Learner")
+- createdAt (DateTime)
+Relationships:
+- has many StudyPlan
+- has many AttemptRecord
+- has many ChatThread
+
+2. StudyPlan
+Represents a learning goal and its source material.
+Fields:
+- id
+- userId
+- title
+- description (optional)
+- sourceText (pasted syllabus/course description or extracted text)
+- status (string: active/completed/paused)
+- targetDate (optional)
+- createdAt
+- updatedAt
+Relationships:
+- belongs to User
+- has many ConceptNode
+- has many ConceptEdge
+- has many SessionRecord (if implemented)
+- has many ChatThread (optional direct relation)
+
+3. ConceptNode
+Single concept within a study plan.
+Fields:
+- id
+- studyPlanId
+- name
+- description
+- keyTermsJson (serialized array[string])
+- difficultyTier (number/string)
+- proficiency (float 0..1)
+- confidence (float 0..1)  // confidence in proficiency estimate
+- easeFactor (float)       // for spaced repetition
+- interval (int days)
+- repetitionCount (int)
+- lastPracticed (optional DateTime)
+- nextDue (optional DateTime)
+- attemptCount (int)
+- isDeprecated (bool)
+- isManuallyAdjusted (bool)
+- positionX (float)        // graph layout persistence
+- positionY (float)
+Relationships:
+- belongs to StudyPlan
+- has many Question
+- connects through ConceptEdge
+
+4. ConceptEdge
+Prerequisite relation (DAG edge).
+Fields:
+- id
+- studyPlanId
+- fromNodeId
+- toNodeId
+Semantics:
+- Define and document direction consistently (recommended: from prerequisite -> dependent)
+
+5. Question
+Pre-generated or generated-on-demand practice question.
+Fields:
+- id
+- conceptNodeId
+- questionType (string: flashcard/fill_blank/free_response/mcq)
+- questionText
+- correctAnswer
+- distractorsJson (serialized array[string], optional for MCQ only)
+- explanation
+- difficulty (float/int target difficulty)
+- isUsed (bool)
+- createdAt
+Relationships:
+- belongs to ConceptNode
+- has many AttemptRecord (or one-to-many reuse pattern)
+
+6. AttemptRecord
+User attempt + evaluation result.
+Fields:
+- id
+- questionId
+- userId
+- userAnswer
+- isCorrect (bool)
+- score (float, supports partial credit)
+- feedback (string)
+- misconceptionsJson (serialized array[string])
+- timeTaken (optional seconds/ms)
+- createdAt
+Relationships:
+- belongs to Question
+- belongs to User
+
+7. SessionRecord (recommended, optional in P0 but useful)
+Tracks diagnosis/practice/review sessions.
+Fields:
+- id
+- studyPlanId
+- userId
+- sessionType (diagnosis/practice/review)
+- startTime
+- endTime
+- questionsAttempted
+- questionsCorrect
+- conceptsCoveredJson (serialized array[conceptId])
+- summaryJson (optional)
+Relationships:
+- belongs to StudyPlan
+- belongs to User
+
+8. ChatThread
+Fields:
+- id
+- userId
+- studyPlanId (optional if global thread)
+- title
+- createdAt
+- updatedAt
+
+9. ChatMessage
+Fields:
+- id
+- threadId
+- role (user/assistant/system/tool)
+- content
+- toolCallsJson (serialized object/array, optional)
+- toolResultsJson (serialized object/array, optional)
+- createdAt
+
+JSON-string field convention (important)
+Use `...Json` suffix for all serialized fields:
+- keyTermsJson
+- distractorsJson
+- misconceptionsJson
+- conceptsCoveredJson
+- toolCallsJson
+- toolResultsJson
+Create helper utilities in /src/lib/utils.ts for consistent parse/stringify and null-safe defaults.
+
+Core Algorithms and System Logic
+
+1. Concept Graph Generation Pipeline (P0 Hero Feature)
+Input:
+- sourceText (syllabus, course description, pasted curriculum text, etc.)
+Output:
+- Valid concept DAG with nodes + prerequisite edges + metadata
+
+Pipeline:
+1) Prompt MiniMax for structured JSON:
+   - concepts with stable IDs/names
+   - prerequisite edges
+   - difficulty tier
+   - learning objectives/key terms
+2) Validate with Zod schema
+3) Graph validation:
+   - detect cycles (Kahn's algorithm or topological sort)
+   - resolve by deterministic pruning or retry/re-prompt if needed
+4) Graph enrichment:
+   - descriptions/key terms/tags (if not already included)
+5) Compute layout with dagre
+6) Persist ConceptNode + ConceptEdge + node positions
+
+Requirements:
+- Robust retry strategy on malformed JSON
+- Logging of raw LLM output for debugging
+- Few-shot examples strongly recommended in prompt
+- MiniMax spike should measure first-pass valid JSON rate (target >80%)
+
+2. Adaptive Question Selection
+Goals:
+- Learn the user's proficiency efficiently (diagnosis)
+- Improve learning outcomes (practice)
+
+Concept priority score (recommended):
+priority = uncertainty * importance * readiness
+Where:
+- uncertainty: lack of confidence in current proficiency estimate
+- importance: graph centrality / curriculum priority
+- readiness: prerequisites sufficiently mastered (or estimated mastered)
+
+Behaviors:
+- Prefer high-priority concepts
+- Use prerequisite skip logic:
+  - Correct answer on advanced concept increases confidence in prerequisite proficiency
+  - Avoid over-testing obvious basics
+- Interleave question types for engagement and coverage
+
+3. Difficulty Adaptation
+Within a concept:
+- Start at medium difficulty
+- Increase difficulty on correct answer
+- Decrease on incorrect answer
+
+Proficiency update (lightweight Elo-like approach):
+proficiency += K * (outcome - expected)
+Where:
+- outcome = 1 (correct) or 0 (incorrect), or partial score for free response
+- expected is estimated from question difficulty vs current proficiency
+- clamp proficiency to [0, 1]
+
+Use the updated proficiency/confidence to choose next concept/question difficulty. Aim for ~70% success rate.
+
+4. Question Generation (MiniMax)
+Questions are generated from concept metadata and difficulty target.
+Prompt inputs:
+- concept name
+- description
+- key terms
+- question type
+- target difficulty
+- constraints (must target this concept only)
+Outputs (structured JSON):
+- questionText
+- correctAnswer
+- explanation
+- difficulty
+- questionType
+- distractors (for MCQ)
+- optional metadata tags
+
+P0 performance requirement:
+- Pre-generate ~5 questions per concept after graph generation
+- Store in Question table
+- Replenish in background when inventory is low
+- Avoid on-demand generation in the card UX if possible
+
+5. Free Response Evaluation (MiniMax)
+For free-response attempts:
+- Determine correctness (bool)
+- Assign score (0..1)
+- Extract misconceptions (array)
+- Generate feedback
+- Optionally estimate completeness
+
+Write results to AttemptRecord and update the related ConceptNode proficiency/confidence.
+Allow fallback behavior if evaluation fails:
+- generic feedback + "retry" option
+- no proficiency update or conservative update
+
+6. Spaced Repetition / Review Scheduling (P1/P2)
+Use concept-level scheduling (not card-level), based on SM-2/FSRS-style signals.
+Per-concept fields (already in ConceptNode):
+- easeFactor
+- interval
+- repetitionCount
+- nextDue
+
+P1:
+- Compute due concepts and show review queue in UI
+P2 (local-only):
+- Local notifications via Browser Notification API while app is open
+- Optional service worker for in-app messaging while tab is backgrounded
+- No push server, no APNs, no Web Push key infrastructure for hackathon
+
+7. Resource Discovery (P2 / Optional)
+Original proposal includes MCP-based resource discovery. Keep as extensible future module, but do not block P0.
+P2 implementation options:
+- Curated local JSON/SQLite resource database
+- MCP integration if time permits
+- Chat tool can return recommended resources mapped to concept tags
+
+API Surface (Patch-Adjusted)
+
+All routes assume a single hardcoded user (USER_ID from config). No auth middleware.
+
+Core routes:
+- GET /api/study-plans
+  - List study plans for demo user
+- POST /api/study-plans
+  - Create study plan from title + sourceText
+- GET /api/study-plans/[id]
+  - Fetch plan + optionally graph summary
+- PATCH /api/study-plans/[id]
+  - Update metadata/status/title/etc.
+- DELETE /api/study-plans/[id]
+  - Delete plan and related graph/question data (or soft-delete)
+- POST /api/study-plans/[id]/generate-graph
+  - Run graph generation pipeline and persist nodes/edges
+- POST /api/attempts
+  - Submit answer, evaluate if needed, persist AttemptRecord, update proficiency
+- POST /api/chat
+  - Stream chat responses from MiniMax
+- POST /api/upload
+  - Accept multipart form data, save file to /public/uploads, return local path
+
+Suggested additional routes (implementation convenience):
+- GET /api/study-plans/[id]/graph
+- GET /api/study-plans/[id]/questions/next
+- POST /api/study-plans/[id]/questions/pregenerate
+- GET /api/chat/threads
+- GET /api/chat/threads/[id]
+
+Repository Structure (Patch-Adjusted, Coding-Model Friendly)
+
+Root
+- .env.local                    // MINIMAX_API_KEY only
+- prisma/
+  - schema.prisma               // SQLite provider + all models
+  - seed.ts                     // seeds demo user + optional demo study plan
+- public/
+  - uploads/                    // local uploaded files
+- src/
+  - app/
+    - (tabs)/
+      - layout.tsx              // tab shell (Chat/Learn/Graph)
+      - chat/page.tsx
+      - learn/page.tsx
+      - graph/page.tsx
+    - api/
+      - chat/route.ts
+      - attempts/route.ts
+      - upload/route.ts
+      - study-plans/
+        - route.ts
+        - [id]/route.ts
+        - [id]/generate-graph/route.ts
+  - components/
+    - graph/
+    - learn/
+    - chat/
+    - ui/
+  - lib/
+    - config.ts                 // USER_ID, thresholds, defaults
+    - db.ts                     // Prisma singleton
+    - minimax.ts                // API client/provider wrapper
+    - prompts/
+      - index.ts
+      - conceptGraph.ts
+      - questionGen.ts
+      - freeResponseEval.ts
+      - chatSystem.ts
+    - algorithms/
+      - graphValidator.ts       // cycle detection (Kahn)
+      - questionSelector.ts
+      - difficultyAdapter.ts
+      - proficiencyUpdate.ts
+    - utils.ts                  // JSON parse/stringify helpers etc.
+  - store/
+    - appStore.ts               // Zustand shared state
+  - types/
+    - domain.ts
+    - api.ts
+
+Implementation Priorities (Hackathon Scope)
+
+P0 (Must Ship)
+1. Study plan creation from source text
+2. Concept graph generation (MiniMax -> Zod -> cycle validation -> dagre -> DB)
+3. Graph tab rendering with React Flow
+4. Learn tab adaptive practice with 3+ question types
+5. Attempt recording + proficiency updates
+6. Chat tab with streaming tutor responses
+7. Cross-tab integration (graph updates after practice, chat sees latest proficiency)
+8. Seeded demo dataset fallback
+
+P1 (Should)
+1. Free response evaluation (if not already in P0)
+2. Review queue UI (due concepts)
+3. Analytics/session history
+4. Better node detail panel (attempt history, recommended resources)
+5. More robust prompt/version management
+6. PDF text extraction pipeline for uploaded syllabi
+
+P2 (Nice)
+1. Resource discovery agent (MCP or curated DB)
+2. Local notification reminders via Browser Notification API
+3. Service worker support for background-ish local notifications
+4. Progress timeline / graph evolution view
+5. Concept manual overrides and node editing in UI
+
+P0 Acceptance Criteria (Revised)
+- User can open the app with no sign-in
+- User can create a study plan with a pasted learning goal/source text
+- System generates and stores a valid concept graph
+- Graph is visible and interactive in Graph tab
+- Learn tab presents adaptive questions tied to graph concepts
+- Answer submissions persist attempts and update proficiency
+- Graph colors update to reflect proficiency changes
+- Chat streams tutor responses and references current learning state
+
+Critical Validation Before App Coding (MiniMax Spike)
+Before repository build, run a standalone spike script (TS or Python) to verify:
+1. Concept graph JSON reliability (10 runs; target >80% valid JSON first-pass)
+2. JSON mode support (if available) vs plain prompting reliability
+3. Question generation quality for all target question types
+4. Free response evaluation quality (wrong/partial answers)
+5. Streaming compatibility (ideally OpenAI-compatible)
+6. Latency:
+   - graph generation acceptable at ~5-15s
+   - chat first token ideally <1s
+   - question generation fast enough for background pre-generation
+
+Document findings in code comments or a short note and use them to finalize minimax.ts and prompt strategy.
+
+Concrete Development Sequence (Recommended)
+
+Step 1 — MiniMax Spike (highest risk)
+Deliverable:
+- reliability/latency notes
+- provisional prompt patterns
+- MiniMax client strategy (OpenAI-compatible provider vs custom wrapper)
+
+Step 2 — Repo Scaffold + Prisma
+- Create Next.js app
+- Install dependencies
+- Initialize Prisma (SQLite)
+- Define schema
+- Run `prisma db push`
+- Seed demo user
+- Create placeholder tabs and stub routes
+- Verify Prisma + MiniMax connection + React Flow test graph
+
+Step 3 — Concept Graph Pipeline (hero feature)
+- Prompt
+- API route
+- Zod validation
+- Cycle detection
+- Dagre layout
+- DB persistence
+- Graph tab rendering
+- Study plan creation UI and loading state
+
+Step 4 — Learn Engine
+- Question generation prompts + Zod schemas
+- Pre-generation pipeline
+- Card UI for 3-4 question types
+- Question selector + difficulty adapter
+- Attempt submission/evaluation pipeline
+- Session summary screen
+
+Step 5 — Chat Interface
+- Streaming chat route
+- useChat UI
+- Chat system prompt with learning-state summary
+- Study plan creation tool call (if implemented in P0)
+- Message persistence
+
+Step 6 — Close the Loop
+- Learn -> DB proficiency updates
+- Graph reflects proficiency
+- Chat reads updated proficiency
+- Node detail "Practice this concept"
+- Plan switching across tabs
+
+Step 7 — Polish + Demo Safety Net
+- Loading/error states
+- Dark mode
+- Basic animations
+- Seeded demo plan with pre-generated graph + questions
+- README and local setup instructions
+- Rehearse demo flow (<4 minutes)
+
+Engineering Rules / Pitfalls to Avoid
+- Do not add auth during hackathon
+- Do not add cloud deployment dependencies unless required late
+- Do not let graph styling consume core-feature time
+- Build JSON parse/stringify helpers early and use consistently
+- Validate all LLM structured outputs with Zod
+- Add retries and fallback UI for LLM failures
+- Seed demo data early as a failure-safe
+- Centralize prompts; do not scatter prompt strings across route handlers
+
+Local Setup Checklist (Replaces Deployment Checklist)
+1. Clone repo
+2. Install dependencies
+3. Create `.env.local` with `MINIMAX_API_KEY`
+4. Run `npx prisma db push` (creates SQLite database)
+5. Run `npx prisma db seed` (creates demo user + optional demo plan)
+6. Run `npm run dev`
+7. Open http://localhost:3000
+
+Dependencies (Patch-Adjusted)
+Removed:
+- Supabase packages
+- Auth packages (Clerk/NextAuth/etc.)
+- web-push (for hackathon P2 local notifications)
+- Inngest (not needed for P0/P1)
+
+Core retained/added:
+- next, react, react-dom
+- typescript, tailwindcss
+- ai (Vercel AI SDK)
+- @ai-sdk/openai (or MiniMax-compatible/custom provider wrapper)
+- @xyflow/react
+- dagre
+- prisma, @prisma/client
+- better-sqlite3 (Prisma SQLite runtime dependency)
+- zod
+- zustand
+- framer-motion
+- lucide-react
+- shadcn/ui components
+Optional by phase:
+- ts-fsrs (P1 review scheduling)
+- recharts (P1 analytics)
+- pdf-parse (P1 ingestion)
+- multipart handling helper if needed (formidable/multer) or native FormData route parsing
+
+Definition of Success (Hackathon)
+A local demo where the user:
+- creates a learning plan,
+- sees a generated concept graph,
+- completes adaptive questions,
+- gets immediate feedback,
+- sees graph proficiency update,
+- and can ask the tutor follow-up questions that reference their current weak areas.
+
+This demonstrates the differentiator: a closed-loop AI tutor that continuously maps, tests, and adapts to the learner's knowledge state.
